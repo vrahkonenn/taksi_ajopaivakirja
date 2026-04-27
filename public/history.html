@@ -123,14 +123,12 @@
 <script src="/socket.io/socket.io.js"></script>
 
 <script>
-  
 const socket = io();
 socket.on('ajomerkinnat_paivitetty', (data) => {
   ajomerkinnat = data;
   document.getElementById("logContainer").innerHTML = "";
   render();
 });
-
 const tooltip = document.createElement("div");
 tooltip.className = "tooltip";
 tooltip.style.display = "none";
