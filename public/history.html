@@ -120,17 +120,17 @@
 <h1>Taksin Ajopäiväkirja</h1>
 <div id="logContainer"></div>
 
-<script src="/socket.io/socket.io.js">
-  const socket = io();
-
-  socket.on('ajomerkinnat_paivitetty', (data) => {
-    ajomerkinnat = data;
-    document.getElementById("logContainer").innerHTML = "";
-    render();
-});
-</script>
+<script src="/socket.io/socket.io.js"></script>
 
 <script>
+  
+const socket = io();
+socket.on('ajomerkinnat_paivitetty', (data) => {
+  ajomerkinnat = data;
+  document.getElementById("logContainer").innerHTML = "";
+  render();
+});
+
 const tooltip = document.createElement("div");
 tooltip.className = "tooltip";
 tooltip.style.display = "none";
@@ -179,7 +179,6 @@ function formatTime(sec) {
 
 
 function render() {
-  haeAjomerkinnat();
   const container = document.getElementById("logContainer");
 
   ajomerkinnat.sort((a, b) => {
@@ -345,7 +344,7 @@ document.addEventListener("mousemove", (e) => {
     tooltip.style.display = "none";
   }
 });
-
+haeAjomerkinnat()
 render();
 </script>
 
