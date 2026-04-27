@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ajopäiväkirja Diagrammi</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+    background: #f5f5f5;
+  }
+
+  h1 {
+    text-align: center;
+  }
+
+  .entry {
+    background: white;
+    padding: 20px;
+    margin-bottom: 25px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border-radius: 8px;
+  }
+
+  .header {
+    text-align: center;
+    font-weight: bold;
+    margin-bottom: 15px;
+    font-size: 16px;
+  }
+
+  .timeline-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .time-label {
+    width: 60px;
+    text-align: center;
+    font-weight: bold;
+  }
+
+  .timeline-area {
+    flex: 1;
+    position: relative;
+  }
+
+  .timeline {
+    display: flex;
+    height: 30px;
+    border-radius: 5px;
+    overflow: hidden;
+    background: #ddd;
+    position: relative;
+  }
+
+  .drive {
+    background: #28a745;
+  }
+
+  .break {
+    background: #dc3545;
+  }
+
+  .marker-line {
+    position: absolute;
+    top: 0;
+    width: 2px;
+    height: 30px;
+    background: black;
+    z-index: 2;
+  }
+
+  .labels, .durations, .markers {
+    position: relative;
+    height: 20px;
+    margin-top: 4px;
+    font-size: 12px;
+  }
+
+  .type-label,
+  .duration-label,
+  .marker-label {
+    position: absolute;
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
+
+  .type-label {
+    color: #333;
+    font-weight: bold;
+  }
+
+  .duration-label {
+    color: #222;
+  }
+
+  .marker-label {
+    color: #555;
+  }
+
+  .tooltip {
+  position: absolute;
+  background: rgba(0,0,0,0.85);
+  color: white;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  pointer-events: none;
+  transform: translate(-50%, -120%);
+  white-space: nowrap;
+  z-index: 999;
+}
+</style>
+</head>
+<body>
+
+<h1>Taksin Ajopäiväkirja</h1>
+<div id="logContainer"></div>
+
+<script src="/socket.io/socket.io.js">
+  const socket = io();
+
+  socket.on('ajomerkinnat_paivitetty', (data) => {
+    ajomerkinnat = data;
+    document.getElementById("logContainer").innerHTML = "";
+    render();
+});
+</script>
+
+<script>
+const tooltip = document.createElement("div");
+tooltip.className = "tooltip";
+tooltip.style.display = "none";
+
+document.body.appendChild(tooltip);
+let ajomerkinnat = []
+
+async function haeAjomerkinnat() {
+  const response = await fetch('/api/ajomerkinnat');
+  ajomerkinnat = await response.json();
+
+  document.getElementById("logContainer").innerHTML = "";
+  render();
+}
+
+function toSeconds(time) {
+  const [h, m, s] = time.split(":").map(Number);
+  return h * 3600 + m * 60 + s;
+}
+
+function formatDuration(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+
+  if (s === 0) {
+    return `${h}h ${m}min`;
+  }
+
+  return `${h}h ${m}min ${s}s`;
+}
+
+function normalize(start, end) {
+  return end <= start ? end + 86400 : end;
+}
+
+function formatTime(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+
+  return `${String(h).padStart(2,'0')}:` +
+         `${String(m).padStart(2,'0')}:` +
+         `${String(s).padStart(2,'0')}`;
+}
+
+
+function render() {
+  haeAjomerkinnat();
+  const container = document.getElementById("logContainer");
+
+  ajomerkinnat.sort((a, b) => {
+  const [da, ma, ya] = a.paiva.split('.').map(Number);
+  const [db, mb, yb] = b.paiva.split('.').map(Number);
+
+  const dateA = new Date(ya, ma - 1, da);
+  const dateB = new Date(yb, mb - 1, db);
+
+  return dateB - dateA;
+});
+
+  ajomerkinnat.forEach(entry => {
+    const start = toSeconds(entry.aloitus);
+    const end = normalize(start, toSeconds(entry.lopetus));
+    const total = end - start;
+
+    let current = start;
+    const blocks = [];
+
+    entry.tauot.forEach(tauko => {
+      let bStart = toSeconds(tauko.alku);
+      let bEnd = toSeconds(tauko.loppu);
+
+      if (bStart < start) bStart += 86400;
+      if (bEnd <= bStart) bEnd += 86400;
+
+      blocks.push({
+        type: "Ajo",
+        className: "drive",
+        duration: bStart - current,
+        startTime: formatTime(current),
+        endTime: formatTime(bStart),
+        marker: tauko.alku
+      });
+
+      blocks.push({
+        type: "Tauko",
+        className: "break",
+        duration: bEnd - bStart,
+        startTime: formatTime(bStart),
+        endTime: formatTime(bEnd),
+        marker: tauko.loppu
+      });
+
+      current = bEnd;
+    });
+
+    blocks.push({
+      type: "Ajo",
+      className: "drive",
+      duration: end - current,
+      startTime: formatTime(current),
+      endTime: formatTime(end),
+      marker: entry.lopetus
+    });
+
+    const entryDiv = document.createElement("div");
+    entryDiv.className = "entry";
+
+    const header = document.createElement("div");
+    header.className = "header";
+    header.textContent = `${entry.paiva} | Vuoron kesto: ${formatDuration(total)}`;
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "timeline-wrapper";
+
+    const startLabel = document.createElement("div");
+    startLabel.className = "time-label";
+    startLabel.textContent = entry.aloitus;
+
+    const endLabel = document.createElement("div");
+    endLabel.className = "time-label";
+    endLabel.textContent = entry.lopetus;
+
+    const area = document.createElement("div");
+    area.className = "timeline-area";
+
+    const timeline = document.createElement("div");
+    timeline.className = "timeline";
+
+    const labels = document.createElement("div");
+    labels.className = "labels";
+
+    const durations = document.createElement("div");
+    durations.className = "durations";
+
+    const markers = document.createElement("div");
+    markers.className = "markers";
+
+    let cumulative = 0;
+
+    blocks.forEach((block, index) => {
+      const width = (block.duration / total) * 100;
+      const center = cumulative + width / 2;
+
+      const segment = document.createElement("div");
+      segment.className = block.className;
+      segment.style.width = width + "%";
+
+      segment.addEventListener("mousemove", (e) => {
+        tooltip.style.display = "block";
+
+        tooltip.style.left = e.pageX + "px";
+        tooltip.style.top = (e.pageY - 10) + "px";
+
+        tooltip.innerText =
+          `${block.type.toUpperCase()}\n` +
+          `${block.startTime || "?"} → ${block.endTime || "?"}\n` +
+          `Kesto: ${formatDuration(block.duration)}`;
+      });
+
+      timeline.appendChild(segment);
+
+      const typeLabel = document.createElement("div");
+      typeLabel.className = "type-label";
+      typeLabel.style.left = center + "%";
+      typeLabel.textContent = block.type;
+      labels.appendChild(typeLabel);
+
+      const durationLabel = document.createElement("div");
+      durationLabel.className = "duration-label";
+      durationLabel.style.left = center + "%";
+      durationLabel.textContent = formatDuration(block.duration);
+      durations.appendChild(durationLabel);
+
+      cumulative += width;
+
+      if (index < blocks.length - 1) {
+        const line = document.createElement("div");
+        line.className = "marker-line";
+        line.style.left = cumulative + "%";
+        timeline.appendChild(line);
+
+        const markerLabel = document.createElement("div");
+        markerLabel.className = "marker-label";
+        markerLabel.style.left = cumulative + "%";
+        markerLabel.textContent = block.marker;
+        markers.appendChild(markerLabel);
+      }
+    });
+
+    area.appendChild(timeline);
+    area.appendChild(markers);
+    area.appendChild(labels);
+    area.appendChild(durations);
+
+    wrapper.appendChild(startLabel);
+    wrapper.appendChild(area);
+    wrapper.appendChild(endLabel);
+
+    entryDiv.appendChild(header);
+    entryDiv.appendChild(wrapper);
+
+    container.appendChild(entryDiv);
+  });
+}
+
+document.addEventListener("mousemove", (e) => {
+  const el = document.elementFromPoint(e.clientX, e.clientY);
+
+  if (!el || !el.classList.contains("drive") && !el.classList.contains("break")) {
+    tooltip.style.display = "none";
+  }
+});
+
+render();
+</script>
+
+</body>
+</html>

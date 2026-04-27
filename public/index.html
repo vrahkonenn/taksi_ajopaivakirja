@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+<meta charset="UTF-8">
+<title>Vuoron hallinta</title>
+<style>
+body {
+  font-family: Arial, sans-serif;
+  margin: 30px;
+  background: #f5f5f5;
+  text-align: center;
+}
+
+button {
+  padding: 12px 20px;
+  margin: 5px;
+  font-size: 16px;
+}
+
+#status {
+  font-size: 24px;
+  margin: 20px 0;
+}
+
+#timer {
+  font-size: 30px;
+  font-weight: bold;
+  margin-bottom: 25px;
+}
+
+.entry {
+  background: white;
+  padding: 20px;
+  margin: 0 auto;
+  max-width: 900px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  border-radius: 8px;
+}
+
+.timeline-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.time-label {
+  width: 80px;
+  text-align: center;
+  font-weight: bold;
+}
+
+.timeline-area {
+  flex: 1;
+  position: relative;
+}
+
+.timeline {
+  display: flex;
+  height: 30px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: #ddd;
+  position: relative;
+}
+
+.drive {
+  background: #28a745;
+}
+
+.break {
+  background: #dc3545;
+}
+
+.marker-line {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 30px;
+  background: black;
+}
+
+.labels, .durations, .markers {
+  position: relative;
+  height: 20px;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.type-label,
+.duration-label,
+.marker-label {
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  color: #555;
+}
+
+.type-label {
+  font-weight: bold;
+}
+
+.tooltip {
+  position: absolute;
+  background: rgba(0,0,0,0.85);
+  color: white;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  pointer-events: none;
+  transform: translate(-50%, -120%);
+  white-space: nowrap;
+  z-index: 999;
+}
+</style>
+</head>
+<body>
+
+<h1>Taksin Ajopäiväkirja</h1>
+
+<div id="controls"></div>
+<div id="status"></div>
+<div id="timer"></div>
+<div id="diagramContainer"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+
+const tooltip = document.createElement("div");
+tooltip.className = "tooltip";
+tooltip.style.display = "none";
+document.body.appendChild(tooltip);
+
+let aktiivinenVuoro = null;
+let jaksoAlku = null;
+
+const socket = io();
+
+function toSeconds(time) {
+  const parts = time.split(":").map(Number);
+  return (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+}
+
+function formatDuration(seconds) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return `${h}h ${m}min ${s}s`;
+}
+
+socket.on("aktiivinen_paivitetty", data => {
+  aktiivinenVuoro = data;
+
+  if (aktiivinenVuoro) {
+    const [h, m, s] = aktiivinenVuoro.nykyinenJaksoAlku.split(":").map(Number);
+    const now = new Date();
+    now.setHours(h, m, s, 0);
+    jaksoAlku = now;
+  } else {
+    jaksoAlku = null;
+  }
+
+  render();
+  paivitaTimeri();
+});
+
+async function post(url) {
+  await fetch(url, { method: "POST" });
+}
+
+function render() {
+  const controls = document.getElementById("controls");
+  const status = document.getElementById("status");
+  const timer = document.getElementById("timer");
+  const diagram = document.getElementById("diagramContainer");
+
+  controls.innerHTML = "";
+  diagram.innerHTML = "";
+
+  if (!aktiivinenVuoro) {
+    controls.innerHTML = `<button onclick="post('/api/aloita')">Aloita vuoro</button>`;
+    status.innerText = "Ei aktiivista vuoroa";
+    timer.style.display = "none";
+    return;
+  }
+
+  timer.style.display = "block";
+
+  status.innerText =
+    aktiivinenVuoro.tila === "ajo"
+      ? "AJO KÄYNNISSÄ"
+      : "TAUKO KÄYNNISSÄ";
+
+  if (aktiivinenVuoro.tila === "ajo") {
+    controls.innerHTML = `
+      <button onclick="post('/api/tauko')">Tauko</button>
+      <button onclick="post('/api/lopeta')">Päätä vuoro</button>
+    `;
+  } else {
+    controls.innerHTML = `<button onclick="post('/api/jatka')">Päätä tauko</button>`;
+  }
+
+  piirraDiagrammi();
+}
+
+function formatTime(sec) {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+
+  return `${String(h).padStart(2,'0')}:` +
+         `${String(m).padStart(2,'0')}:` +
+         `${String(s).padStart(2,'0')}`;
+}
+
+function piirraDiagrammi() {
+  const container = document.getElementById("diagramContainer");
+  container.innerHTML = "";
+
+  if (!aktiivinenVuoro) return;
+
+  const start = toSeconds(aktiivinenVuoro.aloitus);
+
+  const now = new Date();
+  const currentSec =
+    now.getHours() * 3600 +
+    now.getMinutes() * 60 +
+    now.getSeconds();
+
+  let current = start;
+  const blocks = [];
+
+  aktiivinenVuoro.tauot.forEach(tauko => {
+    const bStart = toSeconds(tauko.alku);
+    const bEnd = tauko.loppu ? toSeconds(tauko.loppu) : currentSec;
+
+    // ajo ennen taukoa
+    blocks.push({
+        type: "Ajo",
+        className: "drive",
+        duration: bStart - current,
+        startTime: formatTime(current),
+        endTime: formatTime(bStart),
+        marker: tauko.alku
+    });
+
+    // tauko
+    blocks.push({
+        type: "Tauko",
+        className: "break",
+        duration: bEnd - bStart,
+        startTime: formatTime(bStart),
+        endTime: formatTime(bEnd),
+        marker: tauko.loppu
+    });
+
+    current = bEnd;
+  });
+
+  // live ajo
+  if (aktiivinenVuoro.tila === "ajo") {
+    blocks.push({
+        type: "Ajo",
+        className: "drive",
+        duration: currentSec - current,
+        startTime: formatTime(current),
+        endTime: formatTime(currentSec),
+        marker: ""
+    });
+  }
+
+  const total = currentSec - start;
+
+  const entry = document.createElement("div");
+  entry.className = "entry";
+
+  const header = document.createElement("div");
+  header.className = "header";
+  header.textContent =
+    `${aktiivinenVuoro.paiva} | Vuoron kesto: ${formatDuration(total)}`;
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "timeline-wrapper";
+
+  const startLabel = document.createElement("div");
+  startLabel.className = "time-label";
+  startLabel.textContent = aktiivinenVuoro.aloitus;
+
+  const endLabel = document.createElement("div");
+  endLabel.className = "time-label";
+  endLabel.textContent = new Date().toLocaleTimeString('fi-FI');
+
+  const area = document.createElement("div");
+  area.className = "timeline-area";
+
+  const timeline = document.createElement("div");
+  timeline.className = "timeline";
+
+  const labels = document.createElement("div");
+  labels.className = "labels";
+
+  const durations = document.createElement("div");
+  durations.className = "durations";
+
+  const markers = document.createElement("div");
+  markers.className = "markers";
+
+  let cumulative = 0;
+
+  blocks.forEach((block, index) => {
+    const width = total > 0 ? (block.duration / total) * 100 : 100;
+    const center = cumulative + width / 2;
+
+    const segment = document.createElement("div");
+    segment.className = block.className;
+    segment.style.width = width + "%";
+
+    segment.addEventListener("mousemove", (e) => {
+    const startTime = block.startTime;
+    const endTime = block.endTime;
+    const duration = block.duration;
+
+    tooltip.style.display = "block";
+    tooltip.style.left = e.pageX + "px";
+    tooltip.style.top = (e.pageY - 10) + "px";
+
+    tooltip.innerText =
+        `${block.type.toUpperCase()}\n` +
+        `${startTime} → ${endTime}\n` +
+        `Kesto: ${formatDuration(duration)}`;
+    });
+
+    segment.addEventListener("mouseleave", () => {
+    tooltip.style.display = "none";
+    tooltip.innerText = ""
+    });
+
+    segment.addEventListener("mouseout", () => {
+    tooltip.style.display = "none";
+    });
+
+    timeline.appendChild(segment);
+
+    const typeLabel = document.createElement("div");
+    typeLabel.className = "type-label";
+    typeLabel.style.left = center + "%";
+    typeLabel.textContent = block.type;
+    labels.appendChild(typeLabel);
+
+    const durationLabel = document.createElement("div");
+    durationLabel.className = "duration-label";
+    durationLabel.style.left = center + "%";
+    durationLabel.textContent = formatDuration(block.duration);
+    durations.appendChild(durationLabel);
+
+    cumulative += width;
+
+    if (index < blocks.length - 1 && block.marker) {
+      const line = document.createElement("div");
+      line.className = "marker-line";
+      line.style.left = cumulative + "%";
+      timeline.appendChild(line);
+
+      const markerLabel = document.createElement("div");
+      markerLabel.className = "marker-label";
+      markerLabel.style.left = cumulative + "%";
+      markerLabel.textContent = block.marker;
+      markers.appendChild(markerLabel);
+    }
+  });
+
+
+
+  area.appendChild(timeline);
+  area.appendChild(markers);
+  area.appendChild(labels);
+  area.appendChild(durations);
+
+  wrapper.appendChild(startLabel);
+  wrapper.appendChild(area);
+  wrapper.appendChild(endLabel);
+
+  entry.appendChild(header);
+  entry.appendChild(wrapper);
+
+  container.appendChild(entry);
+}
+
+function paivitaTimeri() {
+  if (!aktiivinenVuoro || !jaksoAlku) return;
+
+  const now = new Date();
+  const diff = Math.floor((now - jaksoAlku) / 1000);
+
+  const h = Math.floor(diff / 3600);
+  const m = Math.floor((diff % 3600) / 60);
+  const s = diff % 60;
+
+  document.getElementById("timer").innerText =
+    `${String(h).padStart(2,'0')}:` +
+    `${String(m).padStart(2,'0')}:` +
+    `${String(s).padStart(2,'0')}`;
+
+  piirraDiagrammi();
+}
+
+setInterval(() => {
+    paivitaTimeri();
+    piirraDiagrammi();
+}, 1000);
+
+fetch('/api/aktiivinen')
+  .then(r => r.json())
+  .then(data => {
+    aktiivinenVuoro = data;
+
+    if (aktiivinenVuoro) {
+      const [h, m, s] = aktiivinenVuoro.nykyinenJaksoAlku.split(":").map(Number);
+      const now = new Date();
+      now.setHours(h, m, s, 0);
+      jaksoAlku = now;
+    }
+
+    render();
+    paivitaTimeri();
+  });
+</script>
+
+</body>
+</html>
