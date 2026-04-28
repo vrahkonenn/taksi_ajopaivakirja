@@ -41,12 +41,12 @@ let aktiivinenVuoro = null;
 // APUFUNKTIOT
 // ================================
 function nowTime() {
-  const now = new Date();
+  const now = new Date(Date.now() + 3 * 60 * 60 * 1000);
   return now.toTimeString().slice(0, 8);
 }
 
 function nowDate() {
-  const now = new Date();
+  const now = new Date(Date.now() + 3 * 60 * 60 * 1000);
   return `${now.getDate()}.${now.getMonth() + 1}.${now.getFullYear()}`;
 }
 

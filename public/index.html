@@ -140,6 +140,13 @@ function toSeconds(time) {
   return (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
 }
 
+function adjustTime(timeStr) {
+  const [h, m, s] = timeStr.split(":").map(Number);
+  let adjustedH = h - 3;
+  if (adjustedH < 0) adjustedH += 24;
+  return `${String(adjustedH).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
 function formatDuration(seconds) {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -151,7 +158,8 @@ socket.on("aktiivinen_paivitetty", data => {
   aktiivinenVuoro = data;
 
   if (aktiivinenVuoro) {
-    const [h, m, s] = aktiivinenVuoro.nykyinenJaksoAlku.split(":").map(Number);
+    const adjustedTime = adjustTime(aktiivinenVuoro.nykyinenJaksoAlku);
+    const [h, m, s] = adjustedTime.split(":").map(Number);
     const now = new Date();
     now.setHours(h, m, s, 0);
     jaksoAlku = now;
@@ -218,7 +226,7 @@ function piirraDiagrammi() {
 
   if (!aktiivinenVuoro) return;
 
-  const start = toSeconds(aktiivinenVuoro.aloitus);
+  const start = toSeconds(adjustTime(aktiivinenVuoro.aloitus));
 
   const now = new Date();
   const currentSec =
@@ -230,8 +238,8 @@ function piirraDiagrammi() {
   const blocks = [];
 
   aktiivinenVuoro.tauot.forEach(tauko => {
-    const bStart = toSeconds(tauko.alku);
-    const bEnd = tauko.loppu ? toSeconds(tauko.loppu) : currentSec;
+    const bStart = toSeconds(adjustTime(tauko.alku));
+    const bEnd = tauko.loppu ? toSeconds(adjustTime(tauko.loppu)) : currentSec;
 
     // ajo ennen taukoa
     blocks.push({
@@ -240,7 +248,7 @@ function piirraDiagrammi() {
         duration: bStart - current,
         startTime: formatTime(current),
         endTime: formatTime(bStart),
-        marker: tauko.alku
+        marker: adjustTime(tauko.alku)
     });
 
     // tauko
@@ -250,7 +258,7 @@ function piirraDiagrammi() {
         duration: bEnd - bStart,
         startTime: formatTime(bStart),
         endTime: formatTime(bEnd),
-        marker: tauko.loppu
+        marker: tauko.loppu ? adjustTime(tauko.loppu) : ""
     });
 
     current = bEnd;
@@ -283,7 +291,7 @@ function piirraDiagrammi() {
 
   const startLabel = document.createElement("div");
   startLabel.className = "time-label";
-  startLabel.textContent = aktiivinenVuoro.aloitus;
+  startLabel.textContent = adjustTime(aktiivinenVuoro.aloitus);
 
   const endLabel = document.createElement("div");
   endLabel.className = "time-label";
@@ -414,7 +422,8 @@ fetch('/api/aktiivinen')
     aktiivinenVuoro = data;
 
     if (aktiivinenVuoro) {
-      const [h, m, s] = aktiivinenVuoro.nykyinenJaksoAlku.split(":").map(Number);
+      const adjustedTime = adjustTime(aktiivinenVuoro.nykyinenJaksoAlku);
+      const [h, m, s] = adjustedTime.split(":").map(Number);
       const now = new Date();
       now.setHours(h, m, s, 0);
       jaksoAlku = now;
