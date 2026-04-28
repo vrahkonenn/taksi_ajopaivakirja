@@ -41,12 +41,16 @@ let aktiivinenVuoro = null;
 // APUFUNKTIOT
 // ================================
 function nowTime() {
-  const now = new Date(Date.now() + 3 * 60 * 60 * 1000);
-  return now.toTimeString().slice(0, 8);
+  return Date.now();
+}
+
+function timestampToString(ts) {
+  const d = new Date(ts);
+  return d.toTimeString().slice(0, 8);
 }
 
 function nowDate() {
-  const now = new Date(Date.now() + 3 * 60 * 60 * 1000);
+  const now = new Date();
   return `${now.getDate()}.${now.getMonth() + 1}.${now.getFullYear()}`;
 }
 
@@ -147,9 +151,12 @@ app.post('/api/lopeta', async (req, res) => {
 
   const valmisVuoro = {
     paiva: aktiivinenVuoro.paiva,
-    aloitus: aktiivinenVuoro.aloitus,
-    lopetus: nowTime(),
-    tauot: aktiivinenVuoro.tauot.filter(t => t.loppu)
+    aloitus: timestampToString(aktiivinenVuoro.aloitus),
+    lopetus: timestampToString(nowTime()),
+    tauot: aktiivinenVuoro.tauot.map(t => ({
+      alku: timestampToString(t.alku),
+      loppu: t.loppu ? timestampToString(t.loppu) : null
+    })).filter(t => t.loppu)
   };
 
   await ajomerkinnatCollection.insertOne(valmisVuoro);

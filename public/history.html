@@ -190,48 +190,51 @@ function render() {
 });
 
   ajomerkinnat.forEach(entry => {
-    const start = toSeconds(entry.aloitus);
-    const end = normalize(start, toSeconds(entry.lopetus));
-    const total = end - start;
+    const startTime = entry.aloitus;
+    const endTime = entry.lopetus;
+    const total = (endTime - startTime) / 1000;
 
-    let current = start;
+    let current = startTime;
     const blocks = [];
 
     entry.tauot.forEach(tauko => {
-      let bStart = toSeconds(tauko.alku);
-      let bEnd = toSeconds(tauko.loppu);
-
-      if (bStart < start) bStart += 86400;
-      if (bEnd <= bStart) bEnd += 86400;
+      const ajoStart = current;
+      const ajoEnd = tauko.alku;
+      const ajoDuration = (ajoEnd - ajoStart) / 1000;
 
       blocks.push({
         type: "Ajo",
         className: "drive",
-        duration: bStart - current,
-        startTime: formatTime(current),
-        endTime: formatTime(bStart),
-        marker: tauko.alku
+        duration: ajoDuration,
+        startTime: new Date(ajoStart).toLocaleTimeString('fi-FI'),
+        endTime: new Date(ajoEnd).toLocaleTimeString('fi-FI'),
+        marker: new Date(ajoEnd).toLocaleTimeString('fi-FI')
       });
+
+      const taukoStart = tauko.alku;
+      const taukoEnd = tauko.loppu;
+      const taukoDuration = (taukoEnd - taukoStart) / 1000;
 
       blocks.push({
         type: "Tauko",
         className: "break",
-        duration: bEnd - bStart,
-        startTime: formatTime(bStart),
-        endTime: formatTime(bEnd),
-        marker: tauko.loppu
+        duration: taukoDuration,
+        startTime: new Date(taukoStart).toLocaleTimeString('fi-FI'),
+        endTime: new Date(taukoEnd).toLocaleTimeString('fi-FI'),
+        marker: new Date(taukoEnd).toLocaleTimeString('fi-FI')
       });
 
-      current = bEnd;
+      current = taukoEnd;
     });
 
+    const ajoDuration = (endTime - current) / 1000;
     blocks.push({
       type: "Ajo",
       className: "drive",
-      duration: end - current,
-      startTime: formatTime(current),
-      endTime: formatTime(end),
-      marker: entry.lopetus
+      duration: ajoDuration,
+      startTime: new Date(current).toLocaleTimeString('fi-FI'),
+      endTime: new Date(endTime).toLocaleTimeString('fi-FI'),
+      marker: new Date(endTime).toLocaleTimeString('fi-FI')
     });
 
     const entryDiv = document.createElement("div");
@@ -246,11 +249,11 @@ function render() {
 
     const startLabel = document.createElement("div");
     startLabel.className = "time-label";
-    startLabel.textContent = entry.aloitus;
+    startLabel.textContent = new Date(entry.aloitus).toLocaleTimeString('fi-FI');
 
     const endLabel = document.createElement("div");
     endLabel.className = "time-label";
-    endLabel.textContent = entry.lopetus;
+    endLabel.textContent = new Date(entry.lopetus).toLocaleTimeString('fi-FI');
 
     const area = document.createElement("div");
     area.className = "timeline-area";

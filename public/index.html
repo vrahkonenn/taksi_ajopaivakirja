@@ -140,13 +140,6 @@ function toSeconds(time) {
   return (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
 }
 
-function adjustTime(timeStr) {
-  const [h, m, s] = timeStr.split(":").map(Number);
-  let adjustedH = h - 3;
-  if (adjustedH < 0) adjustedH += 24;
-  return `${String(adjustedH).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-}
-
 function formatDuration(seconds) {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -158,11 +151,7 @@ socket.on("aktiivinen_paivitetty", data => {
   aktiivinenVuoro = data;
 
   if (aktiivinenVuoro) {
-    const adjustedTime = adjustTime(aktiivinenVuoro.nykyinenJaksoAlku);
-    const [h, m, s] = adjustedTime.split(":").map(Number);
-    const now = new Date();
-    now.setHours(h, m, s, 0);
-    jaksoAlku = now;
+    jaksoAlku = new Date(aktiivinenVuoro.nykyinenJaksoAlku);
   } else {
     jaksoAlku = null;
   }
@@ -226,57 +215,57 @@ function piirraDiagrammi() {
 
   if (!aktiivinenVuoro) return;
 
-  const start = toSeconds(adjustTime(aktiivinenVuoro.aloitus));
-
-  const now = new Date();
-  const currentSec =
-    now.getHours() * 3600 +
-    now.getMinutes() * 60 +
-    now.getSeconds();
-
-  let current = start;
+  const startTime = aktiivinenVuoro.aloitus;
+  const now = Date.now();
+  let current = startTime;
   const blocks = [];
 
   aktiivinenVuoro.tauot.forEach(tauko => {
-    const bStart = toSeconds(adjustTime(tauko.alku));
-    const bEnd = tauko.loppu ? toSeconds(adjustTime(tauko.loppu)) : currentSec;
+    const ajoStart = current;
+    const ajoEnd = tauko.alku;
+    const ajoDuration = (ajoEnd - ajoStart) / 1000;
 
     // ajo ennen taukoa
     blocks.push({
         type: "Ajo",
         className: "drive",
-        duration: bStart - current,
-        startTime: formatTime(current),
-        endTime: formatTime(bStart),
-        marker: adjustTime(tauko.alku)
+        duration: ajoDuration,
+        startTime: new Date(ajoStart).toLocaleTimeString('fi-FI'),
+        endTime: new Date(ajoEnd).toLocaleTimeString('fi-FI'),
+        marker: new Date(ajoEnd).toLocaleTimeString('fi-FI')
     });
+
+    const taukoStart = tauko.alku;
+    const taukoEnd = tauko.loppu || now;
+    const taukoDuration = (taukoEnd - taukoStart) / 1000;
 
     // tauko
     blocks.push({
         type: "Tauko",
         className: "break",
-        duration: bEnd - bStart,
-        startTime: formatTime(bStart),
-        endTime: formatTime(bEnd),
-        marker: tauko.loppu ? adjustTime(tauko.loppu) : ""
+        duration: taukoDuration,
+        startTime: new Date(taukoStart).toLocaleTimeString('fi-FI'),
+        endTime: new Date(taukoEnd).toLocaleTimeString('fi-FI'),
+        marker: tauko.loppu ? new Date(taukoEnd).toLocaleTimeString('fi-FI') : ""
     });
 
-    current = bEnd;
+    current = taukoEnd;
   });
 
   // live ajo
   if (aktiivinenVuoro.tila === "ajo") {
+    const ajoDuration = (now - current) / 1000;
     blocks.push({
         type: "Ajo",
         className: "drive",
-        duration: currentSec - current,
-        startTime: formatTime(current),
-        endTime: formatTime(currentSec),
+        duration: ajoDuration,
+        startTime: new Date(current).toLocaleTimeString('fi-FI'),
+        endTime: new Date(now).toLocaleTimeString('fi-FI'),
         marker: ""
     });
   }
 
-  const total = currentSec - start;
+  const total = (now - startTime) / 1000;
 
   const entry = document.createElement("div");
   entry.className = "entry";
@@ -291,7 +280,7 @@ function piirraDiagrammi() {
 
   const startLabel = document.createElement("div");
   startLabel.className = "time-label";
-  startLabel.textContent = adjustTime(aktiivinenVuoro.aloitus);
+  startLabel.textContent = new Date(aktiivinenVuoro.aloitus).toLocaleTimeString('fi-FI');
 
   const endLabel = document.createElement("div");
   endLabel.className = "time-label";
@@ -422,11 +411,7 @@ fetch('/api/aktiivinen')
     aktiivinenVuoro = data;
 
     if (aktiivinenVuoro) {
-      const adjustedTime = adjustTime(aktiivinenVuoro.nykyinenJaksoAlku);
-      const [h, m, s] = adjustedTime.split(":").map(Number);
-      const now = new Date();
-      now.setHours(h, m, s, 0);
-      jaksoAlku = now;
+      jaksoAlku = new Date(aktiivinenVuoro.nykyinenJaksoAlku);
     }
 
     render();
